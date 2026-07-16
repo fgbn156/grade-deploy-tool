@@ -1,33 +1,48 @@
-name: CI
+name: Private GPA Monitor
 
 on:
   push:
-  pull_request:
-
-permissions:
-  contents: read
+    branches: [ main, master ]
+  schedule:
+    # 按照文档说明，默认在特定时间段自动运行
+    - cron: '17 0-15 * * *'
+  # 这一行就是让你能看到 Run workflow 按钮的绝对关键！
+  workflow_dispatch:
 
 jobs:
-  test:
+  monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    permissions:
+      contents: write  # 允许把查到的成绩记录保存回 GitHub 仓库
+
     steps:
-      - name: Checkout source
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          persist-credentials: false
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
-        with:
-          python-version: "3.13"
-          cache: pip
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
 
-      - name: Install dependencies
-        run: python -m pip install -r requirements.txt
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
 
-      - name: Compile
-        run: python -m py_compile get_grades.py
+    - name: Run grade monitor
+      env:
+        STU_ID: ${{ secrets.STU_ID }}
+        STU_PWD: ${{ secrets.STU_PWD }}
+        MAIL_USER: ${{ secrets.MAIL_USER }}
+        MAIL_PASS: ${{ secrets.MAIL_PASS }}
+        MAIL_RECEIVER: ${{ secrets.MAIL_RECEIVER }}
+      run: |
+        python get_grades.py
 
-      - name: Test
-        run: python -m unittest discover -s tests -v
+    - name: Commit and push grade history
+      run: |
+        git config --global user.name 'github-actions[bot]'
+        git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+        git add grade_history.json || true
+        git diff --quiet && git diff --staged --quiet || (git commit -m "bot: update grade history" && git push)
